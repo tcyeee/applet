@@ -23,14 +23,34 @@
 
 ## 2. Runtime Core
 
-- [ ] App 生命周期管理：安装、启动、停止、卸载、更新
-- [ ] App Registry：本地已安装 App 的元数据管理（版本、依赖、状态）
-- [ ] 内置 SQLite 集成：每个 App 独立 database 文件/命名空间
-- [ ] 数据迁移机制：App 定义变更后如何安全迁移已有数据（新增字段、改类型等）
+- [x] App 生命周期管理：安装、启动、停止、卸载、更新
+- [x] App Registry：本地已安装 App 的元数据管理（版本、依赖、状态）
+- [x] 内置 SQLite 集成：每个 App 独立 database 文件/命名空间
+- [x] 数据迁移机制：App 定义变更后如何安全迁移已有数据（新增字段、改类型等）
 - [ ] 文件存储模块：App 私有存储目录、跨 App 共享存储的权限控制
 - [ ] 权限管理：App 之间的数据/文件隔离，用户可见的权限授权 UI
-- [ ] 备份与恢复：全量/单 App 备份，导出为可迁移的归档文件，一键恢复
-- [ ] Scheduler：支持 App 内定义的定时任务（如每日汇总、提醒）
+- [x] 备份与恢复：全量/单 App 备份，导出为可迁移的归档文件，一键恢复
+- [x] Scheduler：支持 App 内定义的定时任务（如每日汇总、提醒）
+
+> 实现见 `src-tauri/src/runtime/`（`registry.rs` App Registry、`appdb.rs` 每
+> App 独立 SQLite + schema 迁移、`storage.rs` 文件存储、`backup.rs` 备份/恢复、
+> `scheduler.rs` cron 触发器扫描），对外通过 `src-tauri/src/commands.rs` 的
+> Tauri command 暴露。`app_schema.rs` 是 App Schema `dataModel`/`automations`
+> 的 Rust 镜像，仅用于生成 SQL 和读取 cron 表达式，**不是**第二个校验器——
+> 校验仍然只能通过 TS 的 `validateAppDefinition`（见 AGENTS.md）。
+>
+> 未完成/已知缺口（文件存储与权限管理两项打勾未全部完成）：
+> - App 私有目录与 `shared/` 目录已实现且互相隔离，但共享目录当前对所有已安装
+>   App 开放，还没有按 App 授权访问的权限模型——这需要 App Schema 新增
+>   `permissions` 字段，目前 schema 里还没有这个概念。
+> - "用户可见的权限授权 UI" 属于声明式 UI Runtime（步骤 3）的工作，尚未开始。
+> - App Registry 的"依赖"字段未建模：App Schema 本身目前没有 App 间依赖的
+>   概念，等该概念出现后再补充。
+> - Scheduler 只负责"检测 cron 触发并派发事件"（`runtime://automation`），
+>   真正执行 `runAction` / `summarize` / `notify` 需要步骤 4 的 action 执行引擎。
+> - 数据迁移默认拒绝破坏性变更（删字段/删实体/改字段类型），需要显式传
+>   `force: true` 才会尝试重建表并尽量保留数据（类型转换用 `CAST`）；`force`
+>   下删除的字段/实体数据仍会丢失，这是预期行为而非 bug。
 
 ## 3. 声明式 UI Runtime（渲染层）
 
