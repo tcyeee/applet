@@ -1,0 +1,82 @@
+{
+  "schemaVersion": "1",
+  "id": "habit-tracker",
+  "name": "习惯打卡",
+  "description": "管理习惯列表，每次打卡生成一条记录，并按周做提醒和汇总。",
+  "dataModel": {
+    "entities": [
+      {
+        "id": "habit",
+        "name": "习惯",
+        "fields": [
+          { "id": "name", "type": "string", "label": "名称", "required": true },
+          { "id": "targetPerWeek", "type": "number", "label": "每周目标次数", "default": 3 },
+          { "id": "active", "type": "boolean", "label": "启用中", "default": true }
+        ]
+      },
+      {
+        "id": "checkIn",
+        "name": "打卡记录",
+        "fields": [
+          { "id": "habit", "type": "reference", "label": "习惯", "required": true, "entityId": "habit", "cardinality": "one" },
+          { "id": "date", "type": "date", "label": "日期", "required": true },
+          { "id": "note", "type": "string", "label": "备注" }
+        ]
+      }
+    ]
+  },
+  "views": [
+    {
+      "id": "habitList",
+      "type": "list",
+      "entityId": "habit",
+      "title": "我的习惯",
+      "fields": [{ "field": "name" }, { "field": "targetPerWeek" }, { "field": "active" }]
+    },
+    {
+      "id": "habitForm",
+      "type": "form",
+      "entityId": "habit",
+      "title": "新建习惯",
+      "fields": [{ "field": "name" }, { "field": "targetPerWeek" }, { "field": "active" }]
+    },
+    {
+      "id": "checkInList",
+      "type": "list",
+      "entityId": "checkIn",
+      "title": "打卡记录",
+      "fields": [{ "field": "habit" }, { "field": "date" }, { "field": "note" }]
+    },
+    {
+      "id": "checkInForm",
+      "type": "form",
+      "entityId": "checkIn",
+      "title": "打卡",
+      "fields": [{ "field": "habit" }, { "field": "date" }, { "field": "note" }]
+    },
+    {
+      "id": "weeklyCheckInChart",
+      "type": "chart",
+      "entityId": "checkIn",
+      "title": "本周打卡次数",
+      "chart": { "groupBy": "habit", "aggregate": "count" }
+    }
+  ],
+  "actions": [
+    { "id": "createCheckIn", "type": "create", "entityId": "checkIn" },
+    { "id": "deleteCheckIn", "type": "delete", "entityId": "checkIn" },
+    { "id": "updateHabit", "type": "update", "entityId": "habit" }
+  ],
+  "automations": [
+    {
+      "id": "dailyReminder",
+      "trigger": { "type": "cron", "expression": "0 20 * * *" },
+      "action": { "kind": "notify", "message": "今天还有习惯没打卡，记得完成哦" }
+    },
+    {
+      "id": "weeklySummary",
+      "trigger": { "type": "cron", "expression": "0 0 * * 1" },
+      "action": { "kind": "summarize", "entityId": "checkIn", "groupBy": "habit" }
+    }
+  ]
+}

@@ -1,0 +1,123 @@
+{
+  "schemaVersion": "1",
+  "id": "personal-bookkeeping",
+  "name": "个人记账工具",
+  "description": "记录日常收支，按分类查看月度统计，并对预算超支进行提醒。",
+  "dataModel": {
+    "entities": [
+      {
+        "id": "transaction",
+        "name": "交易记录",
+        "fields": [
+          { "id": "date", "type": "date", "label": "日期", "required": true },
+          {
+            "id": "category",
+            "type": "enum",
+            "label": "分类",
+            "required": true,
+            "options": ["food", "transport", "housing", "entertainment", "income", "other"]
+          },
+          { "id": "unitPrice", "type": "number", "label": "单价" },
+          { "id": "quantity", "type": "number", "label": "数量", "default": 1 },
+          { "id": "amount", "type": "number", "label": "金额", "required": true },
+          { "id": "note", "type": "string", "label": "备注" }
+        ]
+      },
+      {
+        "id": "budget",
+        "name": "预算",
+        "fields": [
+          {
+            "id": "category",
+            "type": "enum",
+            "label": "分类",
+            "required": true,
+            "unique": true,
+            "options": ["food", "transport", "housing", "entertainment", "other"]
+          },
+          { "id": "monthlyLimit", "type": "number", "label": "月度上限", "required": true },
+          { "id": "note", "type": "string", "label": "备注" }
+        ]
+      }
+    ]
+  },
+  "views": [
+    {
+      "id": "transactionList",
+      "type": "list",
+      "entityId": "transaction",
+      "title": "交易列表",
+      "fields": [{ "field": "date" }, { "field": "category" }, { "field": "amount" }, { "field": "note" }]
+    },
+    {
+      "id": "transactionForm",
+      "type": "form",
+      "entityId": "transaction",
+      "title": "记一笔",
+      "fields": [
+        { "field": "date" },
+        { "field": "category" },
+        { "field": "unitPrice" },
+        { "field": "quantity" },
+        { "field": "amount" },
+        { "field": "note" }
+      ]
+    },
+    {
+      "id": "transactionDetail",
+      "type": "detail",
+      "entityId": "transaction",
+      "title": "交易详情",
+      "fields": [
+        { "field": "date" },
+        { "field": "category" },
+        { "field": "amount" },
+        { "field": "unitPrice" },
+        { "field": "quantity" },
+        { "field": "note" }
+      ]
+    },
+    {
+      "id": "monthlyCategoryChart",
+      "type": "chart",
+      "entityId": "transaction",
+      "title": "本月分类支出统计",
+      "chart": { "groupBy": "category", "aggregate": "sum", "metricField": "amount" }
+    },
+    {
+      "id": "budgetList",
+      "type": "list",
+      "entityId": "budget",
+      "title": "预算设置",
+      "fields": [
+        { "field": "category" },
+        { "field": "monthlyLimit" },
+        { "field": "note", "visibleWhen": { "field": "monthlyLimit", "operator": "gt", "value": 0 } }
+      ]
+    }
+  ],
+  "actions": [
+    { "id": "createTransaction", "type": "create", "entityId": "transaction" },
+    { "id": "updateTransaction", "type": "update", "entityId": "transaction" },
+    { "id": "deleteTransaction", "type": "delete", "entityId": "transaction" },
+    {
+      "id": "computeAmount",
+      "type": "compute",
+      "entityId": "transaction",
+      "expression": "unitPrice * quantity",
+      "targetField": "amount"
+    }
+  ],
+  "automations": [
+    {
+      "id": "monthlySummary",
+      "trigger": { "type": "cron", "expression": "0 0 1 * *" },
+      "action": { "kind": "summarize", "entityId": "transaction", "groupBy": "category" }
+    },
+    {
+      "id": "budgetAlert",
+      "trigger": { "type": "cron", "expression": "0 9 * * *" },
+      "action": { "kind": "notify", "message": "检查本月各分类支出是否超过预算上限" }
+    }
+  ]
+}
