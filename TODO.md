@@ -4,10 +4,10 @@
 
 ## 0. 项目初始化
 
-- [ ] 技术选型确认：Tauri 版本、前端框架（渲染声明式 UI 用什么，如 React/Svelte/纯 Web Components）
-- [ ] 初始化 Tauri 项目骨架（Rust 后端 + 前端）
-- [ ] 确定 monorepo / 目录结构（runtime core、MCP server、UI renderer、CLI 等模块划分）
-- [ ] 基础 CI（lint、build、test）
+- [x] 技术选型确认：Tauri 2 + React + TypeScript（渲染声明式 UI 用什么，如 React/Svelte/纯 Web Components）
+- [x] 初始化 Tauri 项目骨架（Rust 后端 + 前端）
+- [x] 确定 monorepo / 目录结构：暂不拆分 monorepo，先用单一 Tauri 项目（`src-tauri/` + `src/`），后续模块变多再拆
+- [x] 基础 CI（lint、build、test）：GitHub Actions，前端跑 eslint/vitest/vite build，后端跑 cargo fmt/clippy/test
 
 ## 1. 声明式 App 定义（App Schema）
 
