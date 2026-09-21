@@ -9,7 +9,10 @@
 use std::fmt;
 use std::path::Path;
 
+use chrono::Utc;
+use rusqlite::types::{Value as SqlValue, ValueRef};
 use rusqlite::Connection;
+use uuid::Uuid;
 
 use crate::app_schema::{DataModel, Entity, Field};
 
@@ -21,6 +24,11 @@ pub enum AppDbError {
     /// Migration would drop or reinterpret existing data; refused unless the
     /// caller explicitly opts in with `force`.
     UnsafeMigration(Vec<String>),
+    /// A record CRUD call referenced a field id that isn't part of the
+    /// entity's schema — rejected instead of silently dropped so a caller
+    /// that bypassed TS validation gets a clear error, not partial data.
+    UnknownField(String),
+    RecordNotFound(String),
 }
 
 impl fmt::Display for AppDbError {
@@ -36,6 +44,8 @@ impl fmt::Display for AppDbError {
                     changes.join("; ")
                 )
             }
+            AppDbError::UnknownField(id) => write!(f, "unknown field \"{id}\" for entity"),
+            AppDbError::RecordNotFound(id) => write!(f, "record \"{id}\" not found"),
         }
     }
 }
@@ -332,6 +342,203 @@ pub fn migrate_schema(
     Ok(plan)
 }
 
+/// Non-many-cardinality fields, in the order they were declared — the same
+/// set that `create_entity_table` gives real columns to.
+fn column_fields(entity: &Entity) -> impl Iterator<Item = &Field> {
+    entity.fields.iter().filter(|f| !f.is_many_reference())
+}
+
+fn find_column_field<'a>(entity: &'a Entity, id: &str) -> Result<&'a Field, AppDbError> {
+    column_fields(entity)
+        .find(|f| f.id() == id)
+        .ok_or_else(|| AppDbError::UnknownField(id.to_string()))
+}
+
+/// Converts a JSON value supplied by a CRUD caller into the SQLite value for
+/// `field`'s column, per the same type mapping `sql_type` uses for DDL.
+fn field_to_sql(field: &Field, value: &serde_json::Value) -> Result<SqlValue, AppDbError> {
+    if value.is_null() {
+        return Ok(SqlValue::Null);
+    }
+    Ok(match field {
+        Field::Boolean(_) => SqlValue::Integer(if value.as_bool().unwrap_or(false) {
+            1
+        } else {
+            0
+        }),
+        Field::Number(_) => SqlValue::Real(value.as_f64().unwrap_or(0.0)),
+        _ => SqlValue::Text(
+            value
+                .as_str()
+                .map(str::to_string)
+                .unwrap_or_else(|| value.to_string()),
+        ),
+    })
+}
+
+/// Converts one column's SQLite value back to JSON, per `field`'s type.
+fn field_from_sql(field: &Field, raw: ValueRef<'_>) -> rusqlite::Result<serde_json::Value> {
+    if matches!(raw, ValueRef::Null) {
+        return Ok(serde_json::Value::Null);
+    }
+    Ok(match field {
+        Field::Boolean(_) => serde_json::Value::Bool(raw.as_i64()? != 0),
+        Field::Number(_) => serde_json::json!(raw.as_f64()?),
+        _ => serde_json::Value::String(raw.as_str()?.to_string()),
+    })
+}
+
+fn row_to_json(row: &rusqlite::Row, entity: &Entity) -> rusqlite::Result<serde_json::Value> {
+    let mut map = serde_json::Map::new();
+    map.insert(
+        "id".to_string(),
+        serde_json::json!(row.get::<_, String>("id")?),
+    );
+    map.insert(
+        "createdAt".to_string(),
+        serde_json::json!(row.get::<_, String>("createdAt")?),
+    );
+    map.insert(
+        "updatedAt".to_string(),
+        serde_json::json!(row.get::<_, String>("updatedAt")?),
+    );
+    for field in column_fields(entity) {
+        let raw = row.get_ref(field.id())?;
+        map.insert(field.id().to_string(), field_from_sql(field, raw)?);
+    }
+    Ok(serde_json::Value::Object(map))
+}
+
+fn select_columns(entity: &Entity) -> String {
+    let mut columns = vec![
+        "id".to_string(),
+        "createdAt".to_string(),
+        "updatedAt".to_string(),
+    ];
+    columns.extend(column_fields(entity).map(|f| format!("\"{}\"", f.id())));
+    columns.join(", ")
+}
+
+pub fn list_records(
+    conn: &Connection,
+    entity: &Entity,
+) -> Result<Vec<serde_json::Value>, AppDbError> {
+    check_identifier(&entity.id)?;
+    let sql = format!(
+        "SELECT {} FROM \"{}\" ORDER BY createdAt",
+        select_columns(entity),
+        entity.id
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt
+        .query_map([], |row| row_to_json(row, entity))?
+        .collect::<Result<Vec<_>, _>>()?;
+    Ok(rows)
+}
+
+pub fn get_record(
+    conn: &Connection,
+    entity: &Entity,
+    id: &str,
+) -> Result<Option<serde_json::Value>, AppDbError> {
+    check_identifier(&entity.id)?;
+    let sql = format!(
+        "SELECT {} FROM \"{}\" WHERE id = ?1",
+        select_columns(entity),
+        entity.id
+    );
+    let mut stmt = conn.prepare(&sql)?;
+    let mut rows = stmt.query_map([id], |row| row_to_json(row, entity))?;
+    rows.next().transpose().map_err(AppDbError::from)
+}
+
+/// Inserts a new record. Unknown keys in `values` are rejected; missing keys
+/// fall back to the column's schema-declared default (or SQL `NULL`).
+pub fn insert_record(
+    conn: &Connection,
+    entity: &Entity,
+    values: &serde_json::Map<String, serde_json::Value>,
+) -> Result<serde_json::Value, AppDbError> {
+    check_identifier(&entity.id)?;
+    let id = Uuid::new_v4().to_string();
+    let now = Utc::now().to_rfc3339();
+
+    let mut columns = vec![
+        "id".to_string(),
+        "createdAt".to_string(),
+        "updatedAt".to_string(),
+    ];
+    let mut params: Vec<SqlValue> = vec![
+        SqlValue::Text(id.clone()),
+        SqlValue::Text(now.clone()),
+        SqlValue::Text(now),
+    ];
+
+    for (key, value) in values {
+        let field = find_column_field(entity, key)?;
+        columns.push(format!("\"{key}\""));
+        params.push(field_to_sql(field, value)?);
+    }
+
+    let placeholders = (1..=params.len())
+        .map(|i| format!("?{i}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let sql = format!(
+        "INSERT INTO \"{}\" ({}) VALUES ({placeholders})",
+        entity.id,
+        columns.join(", ")
+    );
+    conn.execute(&sql, rusqlite::params_from_iter(params))?;
+
+    get_record(conn, entity, &id)?.ok_or(AppDbError::RecordNotFound(id))
+}
+
+/// Updates an existing record's provided fields and refreshes `updatedAt`.
+pub fn update_record(
+    conn: &Connection,
+    entity: &Entity,
+    id: &str,
+    values: &serde_json::Map<String, serde_json::Value>,
+) -> Result<serde_json::Value, AppDbError> {
+    check_identifier(&entity.id)?;
+    if get_record(conn, entity, id)?.is_none() {
+        return Err(AppDbError::RecordNotFound(id.to_string()));
+    }
+
+    let mut assignments = vec!["updatedAt = ?1".to_string()];
+    let mut params: Vec<SqlValue> = vec![SqlValue::Text(Utc::now().to_rfc3339())];
+
+    for (key, value) in values {
+        let field = find_column_field(entity, key)?;
+        params.push(field_to_sql(field, value)?);
+        assignments.push(format!("\"{key}\" = ?{}", params.len()));
+    }
+    params.push(SqlValue::Text(id.to_string()));
+
+    let sql = format!(
+        "UPDATE \"{}\" SET {} WHERE id = ?{}",
+        entity.id,
+        assignments.join(", "),
+        params.len()
+    );
+    conn.execute(&sql, rusqlite::params_from_iter(params))?;
+
+    get_record(conn, entity, id)?.ok_or_else(|| AppDbError::RecordNotFound(id.to_string()))
+}
+
+pub fn delete_record(conn: &Connection, entity: &Entity, id: &str) -> Result<(), AppDbError> {
+    check_identifier(&entity.id)?;
+    let changed = conn.execute(
+        &format!("DELETE FROM \"{}\" WHERE id = ?1", entity.id),
+        [id],
+    )?;
+    if changed == 0 {
+        return Err(AppDbError::RecordNotFound(id.to_string()));
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -503,5 +710,73 @@ mod tests {
         };
         let err = create_schema(&conn, &data_model).unwrap_err();
         assert!(matches!(err, AppDbError::UnsafeIdentifier(_)));
+    }
+
+    fn item_entity() -> Entity {
+        serde_json::from_value(serde_json::json!({
+            "id": "item", "name": "Item", "fields": [
+                { "id": "title", "type": "string", "required": true },
+                { "id": "price", "type": "number" },
+                { "id": "archived", "type": "boolean" }
+            ]
+        }))
+        .unwrap()
+    }
+
+    #[test]
+    fn insert_list_update_delete_record_roundtrip() {
+        let conn = Connection::open_in_memory().unwrap();
+        let entity = item_entity();
+        create_entity_table(&conn, &entity).unwrap();
+
+        let mut values = serde_json::Map::new();
+        values.insert("title".to_string(), serde_json::json!("Widget"));
+        values.insert("price".to_string(), serde_json::json!(9.5));
+        values.insert("archived".to_string(), serde_json::json!(false));
+        let created = insert_record(&conn, &entity, &values).unwrap();
+        let id = created["id"].as_str().unwrap().to_string();
+        assert_eq!(created["title"], serde_json::json!("Widget"));
+        assert_eq!(created["price"], serde_json::json!(9.5));
+        assert_eq!(created["archived"], serde_json::json!(false));
+
+        let listed = list_records(&conn, &entity).unwrap();
+        assert_eq!(listed.len(), 1);
+        assert_eq!(listed[0]["id"], serde_json::json!(id));
+
+        let mut update = serde_json::Map::new();
+        update.insert("price".to_string(), serde_json::json!(12.0));
+        update.insert("archived".to_string(), serde_json::json!(true));
+        let updated = update_record(&conn, &entity, &id, &update).unwrap();
+        assert_eq!(updated["price"], serde_json::json!(12.0));
+        assert_eq!(updated["archived"], serde_json::json!(true));
+        assert_eq!(updated["title"], serde_json::json!("Widget"));
+        assert_ne!(updated["updatedAt"], updated["createdAt"]);
+
+        delete_record(&conn, &entity, &id).unwrap();
+        assert!(list_records(&conn, &entity).unwrap().is_empty());
+        assert!(matches!(
+            delete_record(&conn, &entity, &id).unwrap_err(),
+            AppDbError::RecordNotFound(_)
+        ));
+    }
+
+    #[test]
+    fn crud_rejects_unknown_field() {
+        let conn = Connection::open_in_memory().unwrap();
+        let entity = item_entity();
+        create_entity_table(&conn, &entity).unwrap();
+
+        let mut values = serde_json::Map::new();
+        values.insert("nope".to_string(), serde_json::json!("x"));
+        let err = insert_record(&conn, &entity, &values).unwrap_err();
+        assert!(matches!(err, AppDbError::UnknownField(_)));
+    }
+
+    #[test]
+    fn get_record_returns_none_for_missing_id() {
+        let conn = Connection::open_in_memory().unwrap();
+        let entity = item_entity();
+        create_entity_table(&conn, &entity).unwrap();
+        assert!(get_record(&conn, &entity, "missing").unwrap().is_none());
     }
 }

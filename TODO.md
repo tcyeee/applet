@@ -54,11 +54,43 @@
 
 ## 3. 声明式 UI Runtime（渲染层）
 
-- [ ] 根据 App Schema 动态渲染页面（列表、表单、详情、图表等基础组件库）
-- [ ] 组件与数据绑定机制（读取/写入 SQLite，触发校验）
-- [ ] 导航/路由：多页面 App 内的页面跳转
-- [ ] 主题/样式的默认规范，保证不同 AI 生成的 App UI 风格统一
-- [ ] 错误态、空态、加载态的默认处理，降低 AI 生成时的心智负担
+- [x] 根据 App Schema 动态渲染页面（列表、表单、详情、图表等基础组件库）
+- [x] 组件与数据绑定机制（读取/写入 SQLite，触发校验）
+- [x] 导航/路由：多页面 App 内的页面跳转
+- [x] 主题/样式的默认规范，保证不同 AI 生成的 App UI 风格统一
+- [x] 错误态、空态、加载态的默认处理，降低 AI 生成时的心智负担
+
+> 实现见 `src/ui-runtime/`：`AppShell` 左侧导航 + 自研内存态视图栈
+> （`router.ts`，不依赖浏览器 URL/react-router）驱动 `ListView`/`FormView`/
+> `DetailView`/`ChartView` 四种视图组件；`useEntityRecords` 封装新增的
+> Tauri `list_records`/`create_record`/`update_record`/`delete_record`
+> command 做数据绑定；`fieldSchema.ts` 按 `dataModel` 字段类型动态生成 Zod
+> schema 供 `react-hook-form` 校验；`computeExpression.ts` 是 `Action`
+> `type: "compute"` 的安全四则运算求值器，在表单里对依赖字段联动实时计算
+> `targetField`；`aggregate.ts` 供 `ChartView` 按 `chart.groupBy`/`aggregate`
+> 做客户端聚合（`recharts` 渲染）。UI 组件库用 Tailwind v4 + 手写的
+> shadcn/ui 组件（`src/components/ui/`，`components.json` 声明其
+> 约定）——同一套组件是所有 AI 生成 App 唯一能渲染出的视觉语言，风格统一由
+> 渲染层强制保证，App Schema 本身不携带任何样式信息。`EmptyState`/
+> `ErrorState`/`LoadingState` 是三种视图共用的默认态。
+>
+> 前置补充：Rust 侧原本只有建表/迁表，没有读写数据行的能力，本步骤在
+> `src-tauri/src/runtime/appdb.rs` 补上了 `list_records`/`insert_record`/
+> `update_record`/`delete_record`（`get_record` 供内部查找用），通过
+> `src-tauri/src/commands.rs` 暴露的四个 Tauri command 调用；字段级类型转换
+> 镜像 `sql_type()` 的规则，未知字段名拒绝，权当纵深防御。
+>
+> 已知缺口：
+> - many-cardinality 引用字段的 link 表读写未实现（两个示例 App 都未使用）。
+> - `reference: "one"` 字段的表单 Select 用目标实体的 `id` 作为选项文案，
+>   还没有"取哪个字段当展示名"的约定。
+> - Detail/Edit/Chart 都是拉取该实体全部记录后在前端按 id 过滤或聚合，没有
+>   单条查询或服务端聚合的 Tauri command——数据量大的 App 会是性能瓶颈。
+> - `automations` 里 `runAction`/`notify` 的执行、以及 App 间导航之外更复杂
+>   的交互，仍然是步骤 4（MCP/action 执行引擎）的工作。
+> - 本机验证受限于沙箱环境没有 Accessibility 权限，只跑通了
+>   `pnpm tauri dev` 启动后的截图确认（App 列表页渲染正常），记账示例的
+>   新增/编辑/删除/图表完整点击流程需要人工过一遍。
 
 ## 4. MCP 接口层
 
