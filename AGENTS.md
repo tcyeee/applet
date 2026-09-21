@@ -92,3 +92,41 @@ into one.
 considering a change done — the test suites in `registry.rs`, `appdb.rs`,
 `storage.rs`, `backup.rs`, and `scheduler.rs` cover the install/migrate/
 isolate/backup contracts described above.
+
+## MCP Interface Layer
+
+`src-tauri/src/mcp/` exposes the Runtime Core to an AI agent as MCP tools, over stdio, via a
+separate binary (`src-tauri/src/bin/mcp_server.rs`) built on the official Rust SDK (`rmcp`) — see
+`docs/mcp-server.md` for the full tool reference and how to build/configure it. Runtime decision:
+**on-demand stdio, not a daemon bundled into the Tauri GUI app** (see that doc's intro for why);
+this settles the "本地 MCP server 常驻，还是按需启动？" question from TODO step 7.
+
+Conventions for adding/changing tools:
+
+- A tool must call straight into `runtime::{registry, appdb, storage, backup}` — the same
+  Tauri-independent functions `commands.rs` wraps for the GUI. Do not reimplement runtime logic
+  in `mcp/`.
+- `mcp/` must never construct or run its own `runtime::scheduler::Scheduler`. That's a polling
+  thread tied to a `tauri::AppHandle` for emitting GUI events; a second instance here would
+  double-fire automations whenever the desktop app is open at the same time. If a tool needs
+  scheduler data, read it from the app's stored `definition.automations` (see `list_automations`),
+  don't start a poller.
+- `install_app`/`update_app` must validate the incoming `AppDefinition` via
+  `mcp::validator::validate_app_definition` (which shells out to the bundled
+  `dist-cli/validate-app.mjs`, built from `src/app-schema/validate-cli.ts` by
+  `pnpm build:mcp-validator`) before calling `registry::install`/`update_definition`. This is the
+  same "TS is the only validator" rule from the App Schema section above — the MCP process is a
+  second entry point into trusting an `AppDefinition`, and it must go through the identical gate the
+  React frontend does, not a Rust reimplementation of the rules.
+- Any tool argument that can lose data (`uninstall_app`'s `purgeData`, `update_app`'s `force`,
+  `restore_app`'s `overwrite`) must be paired with a `confirm` argument that also has to be `true`
+  before the operation runs — reject with a message describing exactly what would be lost otherwise.
+  This is the "危险操作确认机制" TODO step 4 asked for; keep it structural (a required second
+  argument), not just wording in the tool's description.
+- Tests that exercise `install_app`/`update_app`/anything that calls the validator need
+  `dist-cli/validate-app.mjs` built first (`pnpm build:mcp-validator`) — follow the existing
+  `bundle_available()` skip-with-message pattern in `mcp/validator.rs` and `mcp/mod.rs`'s tests
+  rather than failing outright when it's missing locally; CI always builds it before `cargo test`
+  (see `.github/workflows/ci.yml`).
+- Run `cargo fmt`, `cargo clippy --all-targets --all-features`, and `cargo test` from `src-tauri/`
+  same as any other Runtime Core change.

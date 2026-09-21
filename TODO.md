@@ -94,15 +94,54 @@
 
 ## 4. MCP 接口层
 
-- [ ] 设计 MCP tool 集合，覆盖：
-  - [ ] 创建/更新/删除 App（写入声明式定义）
-  - [ ] 查询已安装 App 列表与详情
-  - [ ] 数据库 CRUD 操作（面向 App 数据，而非任意 SQL，防止越权）
-  - [ ] 文件存储读写
-  - [ ] 触发备份/恢复
-  - [ ] Scheduler 任务的增删查
-- [ ] 权限与安全边界：MCP 侧的操作范围限制、危险操作确认机制
-- [ ] 编写 MCP server 的对接文档，方便 Agent（如 Claude）调用
+- [x] 设计 MCP tool 集合，覆盖：
+  - [x] 创建/更新/删除 App（写入声明式定义）
+  - [x] 查询已安装 App 列表与详情
+  - [x] 数据库 CRUD 操作（面向 App 数据，而非任意 SQL，防止越权）
+  - [x] 文件存储读写
+  - [x] 触发备份/恢复
+  - [x] Scheduler 任务的增删查
+- [x] 权限与安全边界：MCP 侧的操作范围限制、危险操作确认机制
+- [x] 编写 MCP server 的对接文档，方便 Agent（如 Claude）调用
+
+> 实现见 `src-tauri/src/mcp/`（`mod.rs` 用 `rmcp`（官方 Rust MCP SDK）的
+> `#[tool_router]`/`#[tool]` 宏声明 22 个 MCP 工具，`validator.rs` 是校验桥接，
+> `error.rs`/`params.rs` 是错误映射和入参类型），对外通过独立的二进制
+> `src-tauri/src/bin/mcp_server.rs`（stdio transport）暴露，不挂在 Tauri GUI
+> 进程里。对接文档见 [docs/mcp-server.md](./docs/mcp-server.md)，约定见
+> AGENTS.md「MCP Interface Layer」一节。
+>
+> 关键设计：
+> - **不是**第二套业务逻辑——每个工具都直接调用 `runtime::{registry, appdb,
+>   storage, backup}` 现成的 Tauri-无关函数（`commands.rs` 包的就是这些），
+>   工具名尽量对齐同名 Tauri command，方便对照。
+> - `install_app`/`update_app` 在改动任何状态前，先把候选 `AppDefinition`
+>   丢给一个 Node 子进程（`dist-cli/validate-app.mjs`，由
+>   `pnpm build:mcp-validator` 从 `src/app-schema/validate-cli.ts` 打包）跑
+>   `validateAppDefinition`——校验规则依然只有 TS 这一份，Rust 侧没有平行
+>   实现第二个校验器，验证失败直接返回 errors，不落地任何数据。
+> - 危险操作（`uninstall_app` 的 `purgeData`、`update_app` 的 `force`、
+>   `restore_app` 的 `overwrite`）额外要求传 `confirm: true` 才会真正执行，
+>   否则报错说明会丢什么——这是「危险操作确认机制」的落地方式：结构化的
+>   第二参数，不是描述文字里写一句「小心」。
+> - `list_automations` 只读 App 定义里已有的 `automations`，MCP 进程本身
+>   **不**起 `runtime::scheduler::Scheduler`——那是绑定 `tauri::AppHandle`
+>   给前端推事件的常驻轮询线程，MCP 进程再起一份会和桌面 GUI 进程重复触发
+>   同一个 automation。automation 的增删走 `update_app` 改 `dataModel`/
+>   `automations`，没有另开一套存储。
+>
+> 已知缺口：
+> - 危险操作的确认机制是「必须多传一个 `confirm: true` 参数」，不是 MCP
+>   `elicitation`（协议层向人类二次确认）——`rmcp` 有这个 feature 但本阶段
+>   没有接，未来如果需要更丰富的确认交互可以再加。
+> - 本机沙箱环境没有装真正的 MCP client（如 Claude Desktop 或
+>   `@modelcontextprotocol/inspector`），但手工拼了原始 JSON-RPC 消息
+>   （`initialize` → `notifications/initialized` → `tools/list` /
+>   `tools/call`）通过 stdin 喂给编译出的 `mcp_server` 二进制验证过一遍真实
+>   的 stdio 协议往返：`tools/list` 能列出全部 22 个工具（含 camelCase 的
+>   `inputSchema`），`install_app` 能跑通校验子进程并把记账示例落地到临时
+>   `APPLET_DATA_DIR`。用真正的 MCP client（图形化确认危险操作、多轮对话）
+>   走一遍仍然是 TODO 第 5 章端到端验收时该补的一步。
 
 ## 5. 端到端打通（MVP 验收）
 
@@ -120,7 +159,10 @@
 
 ## 7. 待决策 / 需要进一步澄清的问题
 
-- [ ] Runtime 与 AI Agent 的连接方式：本地 MCP server 常驻，还是按需启动？
+- [x] Runtime 与 AI Agent 的连接方式：本地 MCP server 常驻，还是按需启动？→
+  按需启动（stdio，AI 客户端 spawn 子进程），见第 4 章实现和
+  AGENTS.md「MCP Interface Layer」。不排除未来加 HTTP/SSE transport 做成
+  常驻形态，但当前阶段没有这个需求。
 - [ ] 多个 App 之间是否允许数据互通（例如记账 App 和日历 App 共享数据）？
 - [ ] 声明式 UI 的表达能力边界：遇到 Schema 无法表达的复杂交互时如何降级（是否允许嵌入自定义代码片段）？
 - [ ] 是否需要支持多用户/多设备同步，还是先聚焦单机单用户？

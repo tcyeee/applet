@@ -1,6 +1,7 @@
-mod app_schema;
+pub mod app_schema;
 mod commands;
-mod runtime;
+pub mod mcp;
+pub mod runtime;
 
 use tauri::Manager;
 
