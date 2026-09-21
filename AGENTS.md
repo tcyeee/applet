@@ -130,3 +130,17 @@ Conventions for adding/changing tools:
   (see `.github/workflows/ci.yml`).
 - Run `cargo fmt`, `cargo clippy --all-targets --all-features`, and `cargo test` from `src-tauri/`
   same as any other Runtime Core change.
+
+## Packaging & Distribution
+
+TODO step 6 — see `docs/packaging.md` for the full picture. In short: `.github/workflows/release.yml`
+cross-builds installers for macOS/Windows/Linux via `tauri-apps/tauri-action` on a `v*` tag push;
+`tauri-plugin-updater` + `tauri-plugin-process` (wired in `src-tauri/src/lib.rs`) give the Runtime
+binary itself a self-update path separate from an App's data migration; `src/components/Onboarding.tsx`
+is a first-run screen gated by the `get_runtime_info`/`is_onboarding_complete`/`complete_onboarding`
+Tauri commands.
+
+**Never commit the updater signing private key.** It's a minisign keypair generated with
+`pnpm tauri signer generate`; only the public half (`plugins.updater.pubkey` in `tauri.conf.json`) is
+meant to be in the repo. The private half belongs in the `TAURI_SIGNING_PRIVATE_KEY` GitHub Actions
+secret (and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` if the key has one), never in a tracked file.

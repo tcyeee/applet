@@ -8,6 +8,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/ui-runtime/components/EmptyState";
 import { ErrorState } from "@/ui-runtime/components/ErrorState";
 import { LoadingState } from "@/ui-runtime/components/LoadingState";
+import { Onboarding } from "@/components/Onboarding";
+import { UpdateChecker } from "@/components/UpdateChecker";
 
 function AppPicker({ onOpen }: { onOpen: (appId: string) => void }) {
   const [apps, setApps] = useState<AppRecord[]>([]);
@@ -59,9 +61,12 @@ function AppPicker({ onOpen }: { onOpen: (appId: string) => void }) {
     <div className="mx-auto flex max-w-2xl flex-col gap-6 p-10">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">已安装的 App</h1>
-        <Button onClick={installExample} disabled={installing}>
-          {installing ? "加载中…" : "加载记账示例"}
-        </Button>
+        <div className="flex items-center gap-2">
+          <UpdateChecker />
+          <Button onClick={installExample} disabled={installing}>
+            {installing ? "加载中…" : "加载记账示例"}
+          </Button>
+        </div>
       </div>
 
       {loading ? (
@@ -88,6 +93,23 @@ function AppPicker({ onOpen }: { onOpen: (appId: string) => void }) {
 
 function App() {
   const [activeApp, setActiveApp] = useState<AppRecord | null>(null);
+  const [onboarded, setOnboarded] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    client.isOnboardingComplete().then(setOnboarded);
+  }, []);
+
+  if (onboarded === null) {
+    return (
+      <div className="mx-auto max-w-2xl p-10">
+        <LoadingState />
+      </div>
+    );
+  }
+
+  if (!onboarded) {
+    return <Onboarding onComplete={() => setOnboarded(true)} />;
+  }
 
   if (activeApp) {
     return (
