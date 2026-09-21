@@ -317,6 +317,41 @@ pub fn delete_record(
     appdb::delete_record(&db_conn, entity, &record_id).map_err(|e| e.to_string())
 }
 
+/// First-run onboarding info shown by the frontend: where the runtime keeps
+/// its data (so the user can point an MCP client's `APPLET_DATA_DIR` at the
+/// same place, see `docs/mcp-server.md`) and the running version.
+#[derive(serde::Serialize)]
+pub struct RuntimeInfo {
+    #[serde(rename = "dataDir")]
+    data_dir: String,
+    version: String,
+}
+
+#[tauri::command]
+pub fn get_runtime_info(state: State<RuntimeState>) -> RuntimeInfo {
+    RuntimeInfo {
+        data_dir: state.base_dir.to_string_lossy().to_string(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+    }
+}
+
+fn onboarding_flag_path(state: &RuntimeState) -> std::path::PathBuf {
+    state.base_dir.join("onboarding-complete")
+}
+
+/// Whether the first-run onboarding flow has already been shown. Backed by a
+/// marker file next to `registry.sqlite` rather than a registry/App-data
+/// table — onboarding is Runtime state, not App data.
+#[tauri::command]
+pub fn is_onboarding_complete(state: State<RuntimeState>) -> bool {
+    onboarding_flag_path(&state).exists()
+}
+
+#[tauri::command]
+pub fn complete_onboarding(state: State<RuntimeState>) -> Result<(), String> {
+    std::fs::write(onboarding_flag_path(&state), b"1").map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub fn start_scheduler(app_handle: AppHandle, state: State<RuntimeState>) -> Result<(), String> {
     let mut guard = state.scheduler.lock().unwrap();

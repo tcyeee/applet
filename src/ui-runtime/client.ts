@@ -20,10 +20,19 @@ export type AppRuntimeRecord = RecordValues & {
   updatedAt: string;
 };
 
+export interface RuntimeInfo {
+  dataDir: string;
+  version: string;
+}
+
 export const client = {
   listApps: () => invoke<AppRecord[]>("list_apps"),
   getApp: (appId: string) => invoke<AppRecord>("get_app", { appId }),
   installApp: (definition: AppDefinition) => invoke<AppRecord>("install_app", { definition }),
+
+  getRuntimeInfo: () => invoke<RuntimeInfo>("get_runtime_info"),
+  isOnboardingComplete: () => invoke<boolean>("is_onboarding_complete"),
+  completeOnboarding: () => invoke<void>("complete_onboarding"),
 
   listRecords: (appId: string, entityId: string) =>
     invoke<AppRuntimeRecord[]>("list_records", { appId, entityId }),

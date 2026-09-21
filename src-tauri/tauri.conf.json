@@ -24,12 +24,37 @@
   "bundle": {
     "active": true,
     "targets": "all",
+    "createUpdaterArtifacts": true,
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "category": "Productivity",
+    "shortDescription": "AI-native desktop runtime for declarative Apps",
+    "longDescription": "Applet installs, persists, and renders declarative App definitions that an AI agent creates and edits over MCP — no hand-written app code.",
+    "macOS": {
+      "minimumSystemVersion": "10.15"
+    },
+    "windows": {
+      "nsis": {
+        "installMode": "perMachine"
+      }
+    },
+    "linux": {
+      "deb": {
+        "depends": []
+      }
+    }
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IERFRkYzRDhGNDA0OTQzNDQKUldSRVEwbEFqejMvM3B3TUpZK2xrQ1krVGx5RVpBc0V5eEk5Qm5kbmphVDI5OS9TcTB5T1FOemMK",
+      "endpoints": [
+        "https://github.com/tcyeee/applet/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

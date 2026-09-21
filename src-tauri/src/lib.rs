@@ -16,6 +16,8 @@ fn greet(name: &str) -> String {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_process::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let base_dir = app.path().app_data_dir().expect("resolve app data dir");
             let state = RuntimeState::init(base_dir).expect("initialize runtime state");
@@ -48,6 +50,9 @@ pub fn run() {
             commands::restore_app,
             commands::start_scheduler,
             commands::stop_scheduler,
+            commands::get_runtime_info,
+            commands::is_onboarding_complete,
+            commands::complete_onboarding,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

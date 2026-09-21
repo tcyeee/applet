@@ -145,17 +145,70 @@
 
 ## 5. 端到端打通（MVP 验收）
 
-- [ ] 场景一：通过 AI 对话创建一个"个人记账工具"（含数据表、录入表单、列表页）
-- [ ] 场景二：追加需求"增加月度统计"，验证声明式变更 + 数据迁移不丢数据
-- [ ] 场景三：追加需求"增加预算功能"，验证多次迭代的可维护性
-- [ ] 场景四："帮我备份数据"，验证备份恢复闭环
-- [ ] 场景五：kill 掉 Runtime 重新打开，验证数据持久化与 App 状态恢复
+- [x] 场景一：通过 AI 对话创建一个"个人记账工具"（含数据表、录入表单、列表页）
+- [x] 场景二：追加需求"增加月度统计"，验证声明式变更 + 数据迁移不丢数据
+- [x] 场景三：追加需求"增加预算功能"，验证多次迭代的可维护性
+- [x] 场景四："帮我备份数据"，验证备份恢复闭环
+- [x] 场景五：kill 掉 Runtime 重新打开，验证数据持久化与 App 状态恢复
+
+> 实现见 `src-tauri/tests/e2e_mvp.rs`：一个 `cargo test` 集成测试，按顺序跑完全部五个场景，
+> 断言基于同一个临时 `base_dir` 之上的真实文件落盘 SQLite（不是 `:memory:`），场景之间共享状态
+> ——这个依赖链本身就是要验证的东西。它直接调用 `registry`/`appdb`/`backup` 这三个 Runtime Core
+> 模块的函数，而不经过 MCP stdio 或 Tauri command 层：两者都是这些函数的薄包装（见 AGENTS.md
+> 「MCP Interface Layer」），直接调用是一个可以在无显示器、无 MCP client 的环境下用
+> `cargo test` 跑通的忠实替代，不需要真的起 Claude Desktop 或 GUI 应用。
+>
+> 场景一装的是只有 `transaction` 实体的最小定义（模拟 AI 第一次生成的版本）；场景二给
+> `transaction` 加一个 `note` 字段并验证两条已有记录在迁移后金额/日期不丢；场景三先加整个
+> `budget` 实体，再对这个新实体本身追加一次字段迁移（第二次迭代），验证连续两次 `update_app`
+> 都不影响此前任何一批数据；场景四在迁移三次之后备份、删除整个 `data.sqlite` 文件模拟灾难性
+> 丢失、再用 `overwrite: true` 恢复，比对恢复前后的记录数与字段值；场景五显式 `drop` 掉两个
+> `Connection` 再用同一个 `base_dir` 重新打开，验证的是"数据只依赖磁盘状态，不依赖进程内存"，
+> 这也是为什么整个测试必须用文件路径而不是 `:memory:`。
+>
+> 未覆盖：真正通过 `mcp_server` 二进制的 stdio JSON-RPC 往返（步骤 4 已用手工拼包的方式验证过
+> 一次协议层，见该章节「已知缺口」）、以及真实桌面 GUI 里的点击流程（步骤 3 已知缺口里提到的
+> 沙箱无 Accessibility 权限限制依然存在，未解除）。
 
 ## 6. 打包与分发
 
-- [ ] Tauri 跨平台打包（macOS / Windows / Linux）
-- [ ] 应用自更新机制（Runtime 本身的版本升级，区别于 App 内数据迁移）
-- [ ] 首次安装引导（初始化本地数据库、配置 MCP 连接）
+- [x] Tauri 跨平台打包（macOS / Windows / Linux）
+- [x] 应用自更新机制（Runtime 本身的版本升级，区别于 App 内数据迁移）
+- [x] 首次安装引导（初始化本地数据库、配置 MCP 连接）
+
+> 详细设计见 [docs/packaging.md](./docs/packaging.md)。三项都是 Applet Runtime 二进制本身的
+> 关注点，和 App 定义/App 数据迁移（步骤 2）是两回事。
+>
+> - **跨平台打包**：`.github/workflows/release.yml`，推 `v*` tag 触发，用
+>   `tauri-apps/tauri-action` 在 `macos-latest`（aarch64 + x86_64 两个 target）/
+>   `ubuntu-22.04` / `windows-latest` 上各自原生打包，产物挂到一个 draft GitHub Release
+>   上——本地沙箱是单一 macOS 环境，没有 Windows/Linux 工具链交叉编译，所以跨平台产物只能来自
+>   CI 矩阵，这个仓库此前也没有 release 流程，是本步骤新增的。
+> - **自更新机制**：新增 `tauri-plugin-updater` + `tauri-plugin-process` 依赖（Rust 与前端两侧
+>   都装了），`src/components/UpdateChecker.tsx` 挂在 App Picker 工具栏，调用
+>   `check()` → `downloadAndInstall()` → `relaunch()`。`tauri.conf.json` 打开了
+>   `bundle.createUpdaterArtifacts`，`plugins.updater.endpoints` 指向
+>   `release.yml`/`tauri-action` 会自动发布到 GitHub Release 上的 `latest.json`，不需要额外的更新
+>   服务器。签名用的是本地生成的 minisign 密钥对，公钥进了 `tauri.conf.json`
+>   的 `plugins.updater.pubkey`，私钥在 `.context/updater-keys/`（gitignored，未提交）——要让
+>   `release.yml` 真正签出 CI 能用的更新包，需要手动把这个私钥内容加进仓库的 GitHub Actions
+>   secret `TAURI_SIGNING_PRIVATE_KEY`，这一步是人工操作，无法由改代码完成。
+> - **首次安装引导**：`RuntimeState::init`（`src-tauri/src/lib.rs`）本来就在 Tauri `setup` 钩子里
+>   同步初始化了本地数据库，所以引导页不需要再做初始化，只需要展示状态：新增的
+>   `get_runtime_info` command 把 data dir 和版本号交给 `src/components/Onboarding.tsx`，页面里
+>   给出一段可以直接复制、already filled 好 `APPLET_DATA_DIR` 的 MCP client 配置 JSON（对应
+>   `docs/mcp-server.md`）。`complete_onboarding` 把一个标记文件写在 `<data dir>/
+>   onboarding-complete`（不进 `registry.sqlite`，因为这是 Runtime UI 状态不是 App
+>   Registry/数据），`App.tsx` 靠 `is_onboarding_complete` 决定首屏是引导页还是 App 列表页。
+>
+> 已知缺口：
+> - 没有真正跑过一次完整的 `release.yml`（需要 push tag + 配置好的 GitHub secret，属于会产生
+>   公开 Release 的操作，未经用户确认不会主动执行）——工作流本身按 `tauri-action` 官方推荐结构
+>   写的，但还没有实测过一次真实产物。
+> - 更新签名私钥目前只存在于这个工作区的 `.context/`，还没有人工同步进 GitHub secrets；在那之前
+>   `release.yml` 会因为签名环境变量为空而在 build 步骤失败，这是预期状态而非 bug。
+> - Windows/Linux 安装引导只验证到"配置文件生成正确"，没有在真实 Windows/Linux 机器上跑过安装
+>   包，同样是本地沙箱只有 macOS 的限制。
 
 ## 7. 待决策 / 需要进一步澄清的问题
 
