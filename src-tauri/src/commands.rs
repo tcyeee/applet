@@ -20,6 +20,18 @@ fn app_dir_ensured(state: &RuntimeState, app_id: &str) -> Result<std::path::Path
     Ok(dir)
 }
 
+fn find_entity<'a>(
+    definition: &'a crate::app_schema::AppDefinition,
+    entity_id: &str,
+) -> Result<&'a crate::app_schema::Entity, String> {
+    definition
+        .data_model
+        .entities
+        .iter()
+        .find(|e| e.id == entity_id)
+        .ok_or_else(|| format!("entity \"{entity_id}\" is not defined on this app"))
+}
+
 #[tauri::command]
 pub fn install_app(
     state: State<RuntimeState>,
@@ -231,6 +243,78 @@ pub fn restore_app(
         overwrite,
     )
     .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn list_records(
+    state: State<RuntimeState>,
+    app_id: String,
+    entity_id: String,
+) -> Result<Vec<serde_json::Value>, String> {
+    let conn = state.registry_conn.lock().unwrap();
+    let record = registry::get(&conn, &app_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("app \"{app_id}\" is not installed"))?;
+    let entity = find_entity(&record.definition, &entity_id)?;
+
+    let db_path = paths::app_db_path(&state.base_dir, &app_id);
+    let db_conn = appdb::open(&db_path).map_err(|e| e.to_string())?;
+    appdb::list_records(&db_conn, entity).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn create_record(
+    state: State<RuntimeState>,
+    app_id: String,
+    entity_id: String,
+    values: serde_json::Map<String, serde_json::Value>,
+) -> Result<serde_json::Value, String> {
+    let conn = state.registry_conn.lock().unwrap();
+    let record = registry::get(&conn, &app_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("app \"{app_id}\" is not installed"))?;
+    let entity = find_entity(&record.definition, &entity_id)?;
+
+    let db_path = paths::app_db_path(&state.base_dir, &app_id);
+    let db_conn = appdb::open(&db_path).map_err(|e| e.to_string())?;
+    appdb::insert_record(&db_conn, entity, &values).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn update_record(
+    state: State<RuntimeState>,
+    app_id: String,
+    entity_id: String,
+    record_id: String,
+    values: serde_json::Map<String, serde_json::Value>,
+) -> Result<serde_json::Value, String> {
+    let conn = state.registry_conn.lock().unwrap();
+    let record = registry::get(&conn, &app_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("app \"{app_id}\" is not installed"))?;
+    let entity = find_entity(&record.definition, &entity_id)?;
+
+    let db_path = paths::app_db_path(&state.base_dir, &app_id);
+    let db_conn = appdb::open(&db_path).map_err(|e| e.to_string())?;
+    appdb::update_record(&db_conn, entity, &record_id, &values).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_record(
+    state: State<RuntimeState>,
+    app_id: String,
+    entity_id: String,
+    record_id: String,
+) -> Result<(), String> {
+    let conn = state.registry_conn.lock().unwrap();
+    let record = registry::get(&conn, &app_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("app \"{app_id}\" is not installed"))?;
+    let entity = find_entity(&record.definition, &entity_id)?;
+
+    let db_path = paths::app_db_path(&state.base_dir, &app_id);
+    let db_conn = appdb::open(&db_path).map_err(|e| e.to_string())?;
+    appdb::delete_record(&db_conn, entity, &record_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
