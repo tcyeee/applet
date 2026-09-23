@@ -26,7 +26,12 @@ export function UpdateChecker() {
       await update.downloadAndInstall();
       await relaunch();
     } catch (err) {
-      setError(String(err));
+      const message = String(err);
+      setError(
+        message.includes("Could not fetch a valid release JSON")
+          ? "尚未发布任何版本，暂时无法检查更新"
+          : message,
+      );
       setStatus("error");
     }
   };
