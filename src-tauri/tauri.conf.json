@@ -51,7 +51,7 @@
   },
   "plugins": {
     "updater": {
-      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IERFRkYzRDhGNDA0OTQzNDQKUldSRVEwbEFqejMvM3B3TUpZK2xrQ1krVGx5RVpBc0V5eEk5Qm5kbmphVDI5OS9TcTB5T1FOemMK",
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEU0QTEzM0QwNzQwNkY5MTYKUldRVytRWjAwRE9oNVBueThhWTFkNVFoZXdWOWNpUzFiWDQxV2lPTktZemZUTU9UdTNFMnJKTTkK",
       "endpoints": [
         "https://github.com/tcyeee/applet/releases/latest/download/latest.json"
       ]
