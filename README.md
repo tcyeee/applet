@@ -1,44 +1,52 @@
 # Applet
 
-**AI-Native Desktop Runtime** — AI 负责创造软件，Applet 负责让软件真正运行起来。
+**AI-Native Desktop Runtime** — AI creates the software, Applet makes it actually run.
 
-Applet 是一个跨平台桌面 Runtime，让 AI Agent（如 Claude）通过 MCP 接口，用**声明式
-App 定义**（而非生成一整套独立代码）来创建、修改和运行本地应用。用户只需要用自然语言
-描述需求（"帮我做一个记账工具" → "增加月度统计" → "帮我备份数据"），Runtime 负责渲染
-UI、管理数据库、持久化、备份与更新，用户不需要理解开发、部署或数据库。
+Applet is a cross-platform desktop runtime that lets AI agents (like Claude) create,
+modify, and run local applications through an MCP interface, using **declarative
+App definitions** instead of generating a whole standalone codebase. Users just
+describe what they need in natural language ("build me an expense tracker" →
+"add monthly stats" → "back up my data"), and the runtime handles UI rendering,
+database management, persistence, backups, and updates — no need to understand
+development, deployment, or databases.
 
-详见项目构思 [IDEA.md](./IDEA.md) 与开发任务清单 [TODO.md](./TODO.md)。
+See the project concept in [IDEA.md](./IDEA.md) and the development task list in
+[TODO.md](./TODO.md).
 
-## 核心能力
+## Core Capabilities
 
-- **App Schema** — JSON 声明式描述数据模型、页面（列表/表单/详情/图表）、交互逻辑与
-  定时任务，带版本化 Schema 校验器。
-- **Runtime Core** — App 生命周期管理、本地 App Registry、每 App 独立 SQLite、安全的
-  数据迁移、文件存储、备份/恢复、定时任务调度。
-- **声明式 UI Runtime** — 根据 App Schema 动态渲染页面，统一的组件库与主题，无需
-  AI 关心样式细节。
-- **MCP 接口层** — 向 AI Agent 暴露一整套工具（安装/更新/卸载 App、数据 CRUD、文件
-  存储、备份恢复、定时任务），详见 [docs/mcp-server.md](./docs/mcp-server.md)。
+- **App Schema** — A JSON declarative description of data models, pages
+  (list/form/detail/chart), interaction logic, and scheduled tasks, with a
+  versioned schema validator.
+- **Runtime Core** — App lifecycle management, a local App Registry, a
+  dedicated SQLite database per app, safe data migrations, file storage,
+  backup/restore, and scheduled task execution.
+- **Declarative UI Runtime** — Dynamically renders pages from the App Schema
+  with a unified component library and theme, so the AI doesn't need to worry
+  about styling details.
+- **MCP Interface Layer** — Exposes a full toolset to AI agents (install/
+  update/uninstall apps, data CRUD, file storage, backup/restore, scheduled
+  tasks); see [docs/mcp-server.md](./docs/mcp-server.md) for details.
 
-## 技术栈
+## Tech Stack
 
-Tauri 2 + React + TypeScript + Vite + SQLite（`rusqlite`）+ MCP（`rmcp`）。
+Tauri 2 + React + TypeScript + Vite + SQLite (`rusqlite`) + MCP (`rmcp`).
 
-## 开发
+## Development
 
 ```bash
 pnpm install
 pnpm tauri dev
 ```
 
-## 构建
+## Build
 
 ```bash
 pnpm tauri build
 ```
 
-打包与发布流程见 [docs/packaging.md](./docs/packaging.md)。
+See [docs/packaging.md](./docs/packaging.md) for the packaging and release process.
 
-## 开源协议
+## License
 
-本项目基于 [MIT License](./LICENSE) 开源，欢迎 Issue 与 PR。
+This project is open source under the [MIT License](./LICENSE). Issues and PRs are welcome.
