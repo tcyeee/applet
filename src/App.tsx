@@ -20,8 +20,10 @@ function AppPicker({ onOpen, onOpenSettings }: { onOpen: (appId: string) => void
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [installing, setInstalling] = useState(false);
+  const [installError, setInstallError] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
   const reload = () => setReloadToken((t) => t + 1);
+  const exampleInstalled = apps.some((app) => app.id === bookkeepingExample.id);
 
   useEffect(() => {
     let cancelled = false;
@@ -45,17 +47,17 @@ function AppPicker({ onOpen, onOpenSettings }: { onOpen: (appId: string) => void
 
   const installExample = async () => {
     setInstalling(true);
-    setError(null);
+    setInstallError(null);
     try {
       const result = validateAppDefinition(bookkeepingExample);
       if (!result.success) {
-        setError(result.errors.join("; "));
+        setInstallError(result.errors.join("; "));
         return;
       }
       await client.installApp(result.data);
       reload();
     } catch (err) {
-      setError(String(err));
+      setInstallError(String(err));
     } finally {
       setInstalling(false);
     }
@@ -67,19 +69,23 @@ function AppPicker({ onOpen, onOpenSettings }: { onOpen: (appId: string) => void
         <h1 className="text-2xl font-semibold">已安装的 App</h1>
         <div className="flex items-center gap-2">
           <UpdateChecker />
-          <Button onClick={installExample} disabled={installing}>
-            {installing ? "加载中…" : "加载记账示例"}
-          </Button>
+          {!exampleInstalled && (
+            <Button onClick={installExample} disabled={installing}>
+              {installing ? "加载中…" : "加载记账示例"}
+            </Button>
+          )}
           <Button variant="ghost" size="icon" aria-label="设置" onClick={onOpenSettings}>
             <SettingsIcon className="size-4" />
           </Button>
         </div>
       </div>
 
+      {installError && <ErrorState message={installError} filePath="src/App.tsx" detail={{ component: "AppPicker" }} />}
+
       {loading ? (
         <LoadingState />
       ) : error ? (
-        <ErrorState message={error} onRetry={reload} />
+        <ErrorState message={error} filePath="src/App.tsx" detail={{ component: "AppPicker" }} onRetry={reload} />
       ) : apps.length === 0 ? (
         <EmptyState message="还没有安装任何 App" actionLabel="加载记账示例" onAction={installExample} />
       ) : (

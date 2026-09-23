@@ -34,7 +34,10 @@ export function AppShell({
   onExit: () => void;
 }) {
   const navViews = definition.views.filter((v) => v.type === "list" || v.type === "chart");
-  const router = useAppRouter(navViews, navViews[0]?.id);
+  // Router must know about every view (including form/detail), not just the
+  // sidebar nav entries — otherwise pushing to a form/detail view id (e.g.
+  // "新增"/row click) can't be resolved back to a View and renders as 404.
+  const router = useAppRouter(definition.views, navViews[0]?.id);
 
   return (
     <div className="flex h-full min-h-screen">
@@ -90,7 +93,14 @@ function RenderView({
         }
       : { appId },
   );
-  if (!view) return <ErrorState message="未找到该页面" />;
+  if (!view)
+    return (
+      <ErrorState
+        message="未找到该页面"
+        filePath="src/ui-runtime/components/AppShell.tsx"
+        detail={{ appId, viewId: router.current.viewId, ...(router.current.recordId ? { recordId: router.current.recordId } : {}) }}
+      />
+    );
 
   switch (view.type) {
     case "list":

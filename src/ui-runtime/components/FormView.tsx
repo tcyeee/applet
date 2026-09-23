@@ -13,11 +13,36 @@ import { FieldInput } from "./FieldInput";
 import { ErrorState } from "./ErrorState";
 import { LoadingState } from "./LoadingState";
 
+function todayDateString(): string {
+  const now = new Date();
+  const yyyy = now.getFullYear();
+  const mm = String(now.getMonth() + 1).padStart(2, "0");
+  const dd = String(now.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 function defaultValueFor(field: Field): string | number | boolean {
   if (field.type === "boolean") return Boolean(field.default);
   if (field.type === "number") return typeof field.default === "number" ? field.default : "";
   if (field.type === "reference") return "";
+  if (field.type === "date" && field.default === undefined) return todayDateString();
   return field.default !== undefined ? String(field.default) : "";
+}
+
+/** Values that mean "nothing was stored here" — including the literal string
+ * "null", which can end up in a record when a value was stringified before
+ * being saved (e.g. by an MCP caller) instead of left absent. */
+function isEmptyValue(value: unknown): boolean {
+  return value === null || value === undefined || value === "" || value === "null";
+}
+
+/** Same as `defaultValueFor`, but seeded from an existing record's stored
+ * value when editing, so a bad/missing value (null, "", the literal string
+ * "null") is repaired instead of round-tripped back into the record. */
+function editValueFor(field: Field, stored: unknown): string | number | boolean {
+  if (isEmptyValue(stored)) return defaultValueFor(field);
+  if (field.type === "boolean") return Boolean(stored);
+  return String(stored);
 }
 
 function fieldIdsInExpression(expression: string): string[] {
@@ -65,7 +90,14 @@ export function FormView({
 
   useEffect(() => {
     if (editingRecord) {
-      form.reset(Object.fromEntries(fields.map((ref) => [ref.field, editingRecord[ref.field] ?? ""])));
+      form.reset(
+        Object.fromEntries(
+          fields.map((ref) => {
+            const field = entity?.fields.find((f) => f.id === ref.field);
+            return [ref.field, field ? editValueFor(field, editingRecord[ref.field]) : ""];
+          }),
+        ),
+      );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editingRecord?.id]);
@@ -88,9 +120,24 @@ export function FormView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(watched)]);
 
-  if (!entity || !schema) return <ErrorState message={`未找到实体 "${view.entityId}"`} />;
+  if (!entity || !schema)
+    return (
+      <ErrorState
+        message={`未找到实体 "${view.entityId}"`}
+        filePath="src/ui-runtime/components/FormView.tsx"
+        detail={{ appId, viewId: view.id }}
+      />
+    );
   if (loading) return <LoadingState />;
-  if (error) return <ErrorState message={error} onRetry={refetch} />;
+  if (error)
+    return (
+      <ErrorState
+        message={error}
+        filePath="src/ui-runtime/components/FormView.tsx"
+        detail={{ appId, viewId: view.id, entityId: view.entityId }}
+        onRetry={refetch}
+      />
+    );
 
   const computedFieldIds = new Set(computeActions.map((a) => a.targetField));
 

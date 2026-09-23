@@ -70,7 +70,7 @@ export function Onboarding({ onComplete }: { onComplete: () => void }) {
   if (error) {
     return (
       <div className="mx-auto max-w-2xl p-10">
-        <ErrorState message={error} />
+        <ErrorState message={error} filePath="src/components/Onboarding.tsx" />
       </div>
     );
   }
