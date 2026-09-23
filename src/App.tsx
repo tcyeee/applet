@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Settings as SettingsIcon } from "lucide-react";
 import { validateAppDefinition } from "@/app-schema/validate";
 import bookkeepingExample from "@/app-schema/examples/bookkeeping.json";
 import { client, type AppRecord } from "@/ui-runtime/client";
@@ -9,9 +10,12 @@ import { EmptyState } from "@/ui-runtime/components/EmptyState";
 import { ErrorState } from "@/ui-runtime/components/ErrorState";
 import { LoadingState } from "@/ui-runtime/components/LoadingState";
 import { Onboarding } from "@/components/Onboarding";
+import { Settings } from "@/components/Settings";
 import { UpdateChecker } from "@/components/UpdateChecker";
+import { useDebugLocation } from "@/debug/DebugModeContext";
 
-function AppPicker({ onOpen }: { onOpen: (appId: string) => void }) {
+function AppPicker({ onOpen, onOpenSettings }: { onOpen: (appId: string) => void; onOpenSettings: () => void }) {
+  useDebugLocation("App 列表", "src/App.tsx", { component: "AppPicker" });
   const [apps, setApps] = useState<AppRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -66,6 +70,9 @@ function AppPicker({ onOpen }: { onOpen: (appId: string) => void }) {
           <Button onClick={installExample} disabled={installing}>
             {installing ? "加载中…" : "加载记账示例"}
           </Button>
+          <Button variant="ghost" size="icon" aria-label="设置" onClick={onOpenSettings}>
+            <SettingsIcon className="size-4" />
+          </Button>
         </div>
       </div>
 
@@ -93,6 +100,7 @@ function AppPicker({ onOpen }: { onOpen: (appId: string) => void }) {
 
 function App() {
   const [activeApp, setActiveApp] = useState<AppRecord | null>(null);
+  const [showSettings, setShowSettings] = useState(false);
   const [onboarded, setOnboarded] = useState<boolean | null>(null);
 
   useEffect(() => {
@@ -117,11 +125,16 @@ function App() {
     );
   }
 
+  if (showSettings) {
+    return <Settings onBack={() => setShowSettings(false)} />;
+  }
+
   return (
     <AppPicker
       onOpen={(appId) => {
         client.getApp(appId).then(setActiveApp);
       }}
+      onOpenSettings={() => setShowSettings(true)}
     />
   );
 }
