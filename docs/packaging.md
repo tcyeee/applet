@@ -12,10 +12,11 @@ bundles natively: `.app`/`.dmg` on macOS, `.msi`/NSIS `.exe` on Windows, `.deb`/
 Linux. Building all three requires each native toolchain, which a single CI runner doesn't have —
 `.github/workflows/release.yml` builds them in a matrix (`macos-latest` ×2 targets for Apple
 Silicon/Intel, `ubuntu-22.04`, `windows-latest`) via `tauri-apps/tauri-action`, triggered by pushing
-a `v*` tag, and attaches the resulting installers to a (draft) GitHub Release.
+a `v*` tag, and attaches the resulting installers to a GitHub Release, which it publishes automatically.
 
 To cut a release: bump `version` in `src-tauri/tauri.conf.json`, tag (`git tag vX.Y.Z && git push
---tags`), let the workflow run, then publish the draft release once you've checked the artifacts.
+--tags`), and let the workflow run — the release goes live (and the updater picks it up) as soon as
+all matrix jobs finish, with no manual publish step.
 
 ## Self-update mechanism
 
