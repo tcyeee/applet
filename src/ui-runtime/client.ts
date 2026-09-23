@@ -29,6 +29,10 @@ export const client = {
   listApps: () => invoke<AppRecord[]>("list_apps"),
   getApp: (appId: string) => invoke<AppRecord>("get_app", { appId }),
   installApp: (definition: AppDefinition) => invoke<AppRecord>("install_app", { definition }),
+  updateApp: (appId: string, definition: AppDefinition, force = false) =>
+    invoke<AppRecord>("update_app", { appId, definition, force }),
+  uninstallApp: (appId: string, purgeData = false) =>
+    invoke<void>("uninstall_app", { appId, purgeData }),
 
   getRuntimeInfo: () => invoke<RuntimeInfo>("get_runtime_info"),
   isOnboardingComplete: () => invoke<boolean>("is_onboarding_complete"),
