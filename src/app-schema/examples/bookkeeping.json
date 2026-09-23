@@ -94,6 +94,20 @@
         { "field": "monthlyLimit" },
         { "field": "note", "visibleWhen": { "field": "monthlyLimit", "operator": "gt", "value": 0 } }
       ]
+    },
+    {
+      "id": "budgetForm",
+      "type": "form",
+      "entityId": "budget",
+      "title": "设置预算",
+      "fields": [{ "field": "category" }, { "field": "monthlyLimit" }, { "field": "note" }]
+    },
+    {
+      "id": "budgetDetail",
+      "type": "detail",
+      "entityId": "budget",
+      "title": "预算详情",
+      "fields": [{ "field": "category" }, { "field": "monthlyLimit" }, { "field": "note" }]
     }
   ],
   "actions": [
@@ -106,7 +120,10 @@
       "entityId": "transaction",
       "expression": "unitPrice * quantity",
       "targetField": "amount"
-    }
+    },
+    { "id": "createBudget", "type": "create", "entityId": "budget" },
+    { "id": "updateBudget", "type": "update", "entityId": "budget" },
+    { "id": "deleteBudget", "type": "delete", "entityId": "budget" }
   ],
   "automations": [
     {

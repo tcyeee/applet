@@ -19,9 +19,24 @@ export function ChartView({
   const entity = definition.dataModel.entities.find((e) => e.id === view.entityId);
   const { records, loading, error, refetch } = useEntityRecords(appId, view.entityId);
 
-  if (!entity || !view.chart) return <ErrorState message="图表配置不完整" />;
+  if (!entity || !view.chart)
+    return (
+      <ErrorState
+        message="图表配置不完整"
+        filePath="src/ui-runtime/components/ChartView.tsx"
+        detail={{ appId, viewId: view.id }}
+      />
+    );
   if (loading) return <LoadingState />;
-  if (error) return <ErrorState message={error} onRetry={refetch} />;
+  if (error)
+    return (
+      <ErrorState
+        message={error}
+        filePath="src/ui-runtime/components/ChartView.tsx"
+        detail={{ appId, viewId: view.id, entityId: view.entityId }}
+        onRetry={refetch}
+      />
+    );
 
   const data = aggregateRecords(records, view.chart);
   if (data.length === 0) return <EmptyState message="暂无数据可供统计" />;

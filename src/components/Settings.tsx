@@ -71,7 +71,7 @@ export function Settings({ onBack }: { onBack: () => void }) {
       </div>
 
       {error ? (
-        <ErrorState message={error} />
+        <ErrorState message={error} filePath="src/components/Settings.tsx" />
       ) : !dataDir ? (
         <LoadingState />
       ) : (

@@ -26,9 +26,24 @@ export function ListView({
   const detailView = definition.views.find((v) => v.type === "detail" && v.entityId === view.entityId);
   const formView = definition.views.find((v) => v.type === "form" && v.entityId === view.entityId);
 
-  if (!entity) return <ErrorState message={`未找到实体 "${view.entityId}"`} />;
+  if (!entity)
+    return (
+      <ErrorState
+        message={`未找到实体 "${view.entityId}"`}
+        filePath="src/ui-runtime/components/ListView.tsx"
+        detail={{ appId, viewId: view.id }}
+      />
+    );
   if (loading) return <LoadingState />;
-  if (error) return <ErrorState message={error} onRetry={refetch} />;
+  if (error)
+    return (
+      <ErrorState
+        message={error}
+        filePath="src/ui-runtime/components/ListView.tsx"
+        detail={{ appId, viewId: view.id, entityId: view.entityId }}
+        onRetry={refetch}
+      />
+    );
 
   const columns: ViewFieldRef[] = (
     view.fields ?? entity.fields.map((f): ViewFieldRef => ({ field: f.id }))
