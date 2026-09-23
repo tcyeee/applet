@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { Settings as SettingsIcon } from "lucide-react";
+import { Settings as SettingsIcon, Trash2, RefreshCw } from "lucide-react";
 import { validateAppDefinition } from "@/app-schema/validate";
 import bookkeepingExample from "@/app-schema/examples/bookkeeping.json";
 import { client, type AppRecord } from "@/ui-runtime/client";
 import { AppShell } from "@/ui-runtime/components/AppShell";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/ui-runtime/components/EmptyState";
 import { ErrorState } from "@/ui-runtime/components/ErrorState";
 import { LoadingState } from "@/ui-runtime/components/LoadingState";
@@ -14,6 +14,29 @@ import { Settings } from "@/components/Settings";
 import { UpdateChecker } from "@/components/UpdateChecker";
 import { useDebugLocation } from "@/debug/DebugModeContext";
 
+// Rust's AppDefinition mirror (src-tauri/src/app_schema.rs) serializes absent
+// optional fields (label, required, unique, description, ...) back out as
+// explicit `null`, while the TS/Zod side simply omits them. Strip nullish
+// values on both sides before comparing so that round-trip noise from the
+// registry isn't mistaken for a real definition change.
+function normalizeForCompare(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(normalizeForCompare);
+  if (value && typeof value === "object") {
+    return Object.keys(value)
+      .sort()
+      .reduce((acc: Record<string, unknown>, k) => {
+        const v = (value as Record<string, unknown>)[k];
+        if (v !== null && v !== undefined) acc[k] = normalizeForCompare(v);
+        return acc;
+      }, {});
+  }
+  return value;
+}
+
+function stableStringify(value: unknown): string {
+  return JSON.stringify(normalizeForCompare(value));
+}
+
 function AppPicker({ onOpen, onOpenSettings }: { onOpen: (appId: string) => void; onOpenSettings: () => void }) {
   useDebugLocation("App 列表", "src/App.tsx", { component: "AppPicker" });
   const [apps, setApps] = useState<AppRecord[]>([]);
@@ -21,9 +44,18 @@ function AppPicker({ onOpen, onOpenSettings }: { onOpen: (appId: string) => void
   const [error, setError] = useState<string | null>(null);
   const [installing, setInstalling] = useState(false);
   const [installError, setInstallError] = useState<string | null>(null);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [updateError, setUpdateError] = useState<string | null>(null);
+  const [uninstallingId, setUninstallingId] = useState<string | null>(null);
   const [reloadToken, setReloadToken] = useState(0);
   const reload = () => setReloadToken((t) => t + 1);
-  const exampleInstalled = apps.some((app) => app.id === bookkeepingExample.id);
+  const installedExample = apps.find((app) => app.id === bookkeepingExample.id);
+  const exampleInstalled = installedExample !== undefined;
+  const exampleValidation = validateAppDefinition(bookkeepingExample);
+  const exampleOutdated =
+    installedExample !== undefined &&
+    exampleValidation.success &&
+    stableStringify(installedExample.definition) !== stableStringify(exampleValidation.data);
 
   useEffect(() => {
     let cancelled = false;
@@ -63,6 +95,37 @@ function AppPicker({ onOpen, onOpenSettings }: { onOpen: (appId: string) => void
     }
   };
 
+  const updateExample = async (force = false) => {
+    if (!exampleValidation.success) {
+      setUpdateError(exampleValidation.errors.join("; "));
+      return;
+    }
+    setUpdatingId(bookkeepingExample.id);
+    setUpdateError(null);
+    try {
+      await client.updateApp(bookkeepingExample.id, exampleValidation.data, force);
+      reload();
+    } catch (err) {
+      setUpdateError(String(err));
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
+  const uninstallAppById = async (app: AppRecord) => {
+    if (!window.confirm(`确定要卸载 "${app.name}" 吗？\n数据不会被删除，重新安装同 id 的 App 后仍会保留。`)) return;
+    setUninstallingId(app.id);
+    setError(null);
+    try {
+      await client.uninstallApp(app.id, false);
+      reload();
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setUninstallingId(null);
+    }
+  };
+
   return (
     <div className="mx-auto flex max-w-2xl flex-col gap-6 p-10">
       <div className="flex items-center justify-between">
@@ -74,6 +137,12 @@ function AppPicker({ onOpen, onOpenSettings }: { onOpen: (appId: string) => void
               {installing ? "加载中…" : "加载记账示例"}
             </Button>
           )}
+          {exampleOutdated && (
+            <Button variant="outline" onClick={() => updateExample(false)} disabled={updatingId === bookkeepingExample.id}>
+              <RefreshCw className="size-4" />
+              {updatingId === bookkeepingExample.id ? "同步中…" : "示例已更新，点击同步"}
+            </Button>
+          )}
           <Button variant="ghost" size="icon" aria-label="设置" onClick={onOpenSettings}>
             <SettingsIcon className="size-4" />
           </Button>
@@ -81,6 +150,18 @@ function AppPicker({ onOpen, onOpenSettings }: { onOpen: (appId: string) => void
       </div>
 
       {installError && <ErrorState message={installError} filePath="src/App.tsx" detail={{ component: "AppPicker" }} />}
+      {updateError && (
+        <ErrorState
+          message={updateError}
+          filePath="src/App.tsx"
+          detail={{ component: "AppPicker", action: "updateExample" }}
+          onRetry={() => {
+            if (window.confirm("普通同步失败，通常是因为字段类型变化可能丢失数据。是否强制同步？这可能导致部分数据丢失。")) {
+              void updateExample(true);
+            }
+          }}
+        />
+      )}
 
       {loading ? (
         <LoadingState />
@@ -94,6 +175,20 @@ function AppPicker({ onOpen, onOpenSettings }: { onOpen: (appId: string) => void
             <Card key={app.id} className="cursor-pointer" onClick={() => onOpen(app.id)}>
               <CardHeader>
                 <CardTitle>{app.name}</CardTitle>
+                <CardAction>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label="卸载"
+                    disabled={uninstallingId === app.id}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      void uninstallAppById(app);
+                    }}
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                </CardAction>
               </CardHeader>
               {app.description && <CardContent className="text-muted-foreground text-sm">{app.description}</CardContent>}
             </Card>
