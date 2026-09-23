@@ -5,11 +5,13 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { LoadingState } from "@/ui-runtime/components/LoadingState";
 import { ErrorState } from "@/ui-runtime/components/ErrorState";
+import { useDebugLocation } from "@/debug/DebugModeContext";
 
 /** First-run onboarding (TODO step 6, "首次安装引导"): confirms the local
  * runtime data directory is ready and shows the AI client config needed to
  * connect the MCP server (`docs/mcp-server.md`) at the same data directory. */
 export function Onboarding({ onComplete }: { onComplete: () => void }) {
+  useDebugLocation("引导", "src/components/Onboarding.tsx");
   const [dataDir, setDataDir] = useState<string | null>(null);
   const [version, setVersion] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);

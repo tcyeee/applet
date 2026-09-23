@@ -8,6 +8,14 @@ import { FormView } from "./FormView";
 import { DetailView } from "./DetailView";
 import { ChartView } from "./ChartView";
 import { ErrorState } from "./ErrorState";
+import { useDebugLocation } from "@/debug/DebugModeContext";
+
+const VIEW_TYPE_FILE: Record<View["type"], string> = {
+  list: "src/ui-runtime/components/ListView.tsx",
+  form: "src/ui-runtime/components/FormView.tsx",
+  detail: "src/ui-runtime/components/DetailView.tsx",
+  chart: "src/ui-runtime/components/ChartView.tsx",
+};
 
 const VIEW_TYPE_LABEL: Record<View["type"], string> = {
   list: "列表",
@@ -71,6 +79,17 @@ function RenderView({
   router: ReturnType<typeof useAppRouter>;
 }) {
   const view = router.currentView;
+  useDebugLocation(
+    view ? `${VIEW_TYPE_LABEL[view.type]}视图` : "未知视图",
+    view ? VIEW_TYPE_FILE[view.type] : "src/ui-runtime/components/AppShell.tsx",
+    view
+      ? {
+          appId,
+          viewId: view.id,
+          ...(router.current.recordId ? { recordId: router.current.recordId } : {}),
+        }
+      : { appId },
+  );
   if (!view) return <ErrorState message="未找到该页面" />;
 
   switch (view.type) {
