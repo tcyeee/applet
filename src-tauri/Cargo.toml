@@ -3,6 +3,7 @@ name = "applet"
 version = "0.1.0"
 description = "Applet - AI-Native Desktop Runtime"
 authors = ["Lucas"]
+license = "MIT"
 edition = "2021"
 default-run = "applet"
 
